@@ -20,6 +20,16 @@ struct ContentView: View {
     @State private var replaceBallB: Entity?
     @State private var xDrop: Float = 0
     @State private var yDrop: Float = 0
+    @State private var score: Int = 0
+    private let OUT_OF_BOUNDS_ENTITY_NAME = "OutOfBoundsFloor"
+    private let BALL_ENTITY_NAMES = [
+        "Ball",
+        "Ball1",
+        "Ball2",
+        "Ball3",
+        "Ball4",
+        "Ball5",
+    ]
 
     var body: some View {
         RealityView { content in
@@ -28,33 +38,29 @@ struct ContentView: View {
                 content.add(box)
                 floorEntity = box
             }
+            // Example ball that moves with the sliders
             if let example = try? await Entity(named: "ExampleBall", in: realityKitContentBundle) {
                 exampleBall = example
                 content.add(exampleBall!)
             }
-            if let ball = try? await Entity(named: "Ball", in: realityKitContentBundle) {
-                balls.append(ball)
-            }
-            if let ball1 = try? await Entity(named: "Ball1", in: realityKitContentBundle) {
-                balls.append(ball1)
-            }
-            if let ball2 = try? await Entity(named: "Ball2", in: realityKitContentBundle) {
-                balls.append(ball2)
-            }
-            if let ball3 = try? await Entity(named: "Ball3", in: realityKitContentBundle) {
-                balls.append(ball3)
-            }
-            if let ball4 = try? await Entity(named: "Ball4", in: realityKitContentBundle) {
-                balls.append(ball4)
-            }
-            if let ball5 = try? await Entity(named: "Ball5", in: realityKitContentBundle) {
-                balls.append(ball5)
+            // Get the balls in order of size
+            for ballName in BALL_ENTITY_NAMES {
+                if let ball = try? await Entity(named: ballName, in: realityKitContentBundle) {
+                    balls.append(ball)
+                }
             }
             self.subs.append(content.subscribe(to: CollisionEvents.Began.self) { ce in
+                if (ce.entityA.name == OUT_OF_BOUNDS_ENTITY_NAME) {
+                    isPlaying = false
+                    // TODO: Logic for ending game
+                }
+                // Combine balls of equal size
                 if (ce.entityA.name == ce.entityB.name) {
                     replaceBallA = ce.entityA
                     replaceBallB = ce.entityB
+                    score += 5 // Make score scale by size and streak?\
                 }
+                addBall = 0
             })
         } update: { content in
             if (replaceBallA != nil && replaceBallB != nil && replaceBallA!.isEnabled && replaceBallB!.isEnabled) {
@@ -103,6 +109,7 @@ struct ContentView: View {
                     } onEditingChanged: { _ in
                         addBall = 0
                     }.frame(width: 200)
+                    Text("Score: \(score)").fontWeight(Font.Weight.bold).frame(width: 120)
                 }
             }
         }
