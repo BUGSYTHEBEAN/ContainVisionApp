@@ -10,12 +10,16 @@ import RealityKit
 import RealityKitContent
 
 struct ContentView: View {
+    @Environment(\.openWindow) private var openWindow
     @State private var isPlaying = true
     @State private var subs: [EventSubscription] = []
     @State private var exampleBall: Entity?
+    @State private var nextExampleBall: Entity?
+    @State private var exampleBalls: [Entity] = []
     @State private var floorEntity: Entity?
     @State private var balls: [Entity] = []
     @State private var addBall = 0
+    @State private var addBallIndex = 0
     @State private var replaceBallA: Entity?
     @State private var replaceBallB: Entity?
     @State private var xDrop: Float = 0
@@ -24,11 +28,16 @@ struct ContentView: View {
     private let OUT_OF_BOUNDS_ENTITY_NAME = "OutOfBoundsFloor"
     private let BALL_ENTITY_NAMES = [
         "Ball",
+        "Ball05",
         "Ball1",
         "Ball2",
         "Ball3",
         "Ball4",
         "Ball5",
+    ]
+    private let EXAMPLE_BALL_ENTITY_NAMES = [
+        "ExampleBall",
+        "ExampleBall05"
     ]
 
     var body: some View {
@@ -39,10 +48,14 @@ struct ContentView: View {
                 floorEntity = box
             }
             // Example ball that moves with the sliders
-            if let example = try? await Entity(named: "ExampleBall", in: realityKitContentBundle) {
-                exampleBall = example
-                content.add(exampleBall!)
+            for exampleBallName in EXAMPLE_BALL_ENTITY_NAMES {
+                if let ball = try? await Entity(named: exampleBallName, in: realityKitContentBundle) {
+                    exampleBalls.append(ball)
+                }
             }
+            exampleBall = exampleBalls[0]
+            exampleBall?.isEnabled = true
+            content.add(exampleBall!)
             // Get the balls in order of size
             for ballName in BALL_ENTITY_NAMES {
                 if let ball = try? await Entity(named: ballName, in: realityKitContentBundle) {
@@ -58,7 +71,7 @@ struct ContentView: View {
                 if (ce.entityA.name == ce.entityB.name) {
                     replaceBallA = ce.entityA
                     replaceBallB = ce.entityB
-                    score += 5 // Make score scale by size and streak?\
+                    score += 5 * ((balls.firstIndex(where: { e in e.name == ce.entityA.name }) ?? 0) + 1)
                 }
                 addBall = 0
             })
@@ -71,25 +84,35 @@ struct ContentView: View {
                 return
             }
             if (isPlaying && addBall > 0) {
-                let ballClone = balls[0].clone(recursive: true)
+                let ballClone = balls[addBallIndex].clone(recursive: true)
                 // Add randomness so balls don't stack
                 let x = xDrop / 65.0 + Float.random(in: -0.002...0.002)
                 let y = Float.random(in: -0.02...0.02)
                 let z = yDrop / 65.0 + Float.random(in: -0.002...0.002)
                 ballClone.position = SIMD3(x, y, z)
                 content.add(ballClone)
-            } else {
-                let x = xDrop / 65.0
-                let z = yDrop / 65.0
-                exampleBall?.position.x = x
-                exampleBall?.position.z = z
             }
+            if (exampleBall != nil && !exampleBall!.isEnabled) {
+                exampleBall!.isEnabled = true
+                content.add(exampleBall!)
+                print("NEW EXAMPLE BALL")
+            }
+            let x = xDrop / 65.0
+            let z = yDrop / 65.0
+            
+            exampleBall?.position.x = x
+            exampleBall?.position.z = z
         }
         .toolbar {
             ToolbarItemGroup(placement: .bottomOrnament) {
                 HStack (spacing: 12) {
                     Button("Drop", action: {
                         addBall+=1
+                        addBallIndex = (exampleBalls.firstIndex(where: { e in e.name == exampleBall?.name }) ?? 0)
+                        exampleBall?.removeFromParent()
+                        let next = getNextBallForDrop()
+                        next.isEnabled = false
+                        exampleBall = next
                     })
                     Slider(value: $xDrop, in: -10...10, step: 0.1) {
                         Text("X")
@@ -110,6 +133,9 @@ struct ContentView: View {
                         addBall = 0
                     }.frame(width: 200)
                     Text("Score: \(score)").fontWeight(Font.Weight.bold).frame(width: 120)
+                    Button("Info", action: {
+                        openWindow(id: "info-window")
+                    })
                 }
             }
         }
@@ -135,6 +161,15 @@ struct ContentView: View {
         
         // TODO: Winning screen, this is crash at max size combine
         return balls[cur+1].clone(recursive: true)
+    }
+    
+    func getNextBallForDrop() -> Entity {
+        let rand = Int.random(in: 0...100)
+        switch rand {
+            case 0..<70: return exampleBalls[0]
+            case 70..<101: return exampleBalls[1]
+            default: return exampleBalls[0]
+        }
     }
 }
 
