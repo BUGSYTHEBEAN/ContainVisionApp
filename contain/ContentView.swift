@@ -8,9 +8,11 @@
 import SwiftUI
 import RealityKit
 import RealityKitContent
+import CoreData
 
 struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.managedObjectContext) private var viewContext
     @State private var isPlaying = true
     @State private var subs: [EventSubscription] = []
     @State private var exampleBall: Entity?
@@ -25,6 +27,7 @@ struct ContentView: View {
     @State private var xDrop: Float = 0
     @State private var yDrop: Float = 0
     @State private var score: Int = 0
+    @State private var highScore: Int = 0
     private let OUT_OF_BOUNDS_ENTITY_NAME = "OutOfBoundsFloor"
     private let BALL_ENTITY_NAMES = [
         "Ball",
@@ -42,6 +45,8 @@ struct ContentView: View {
 
     var body: some View {
         RealityView { content in
+            // Get saved game data
+            highScore = getHighScore()
             // Load box for the game
             if let box = try? await Entity(named: "Scene", in: realityKitContentBundle) {
                 content.add(box)
@@ -65,7 +70,12 @@ struct ContentView: View {
             self.subs.append(content.subscribe(to: CollisionEvents.Began.self) { ce in
                 if (ce.entityA.name == OUT_OF_BOUNDS_ENTITY_NAME) {
                     isPlaying = false
-                    // TODO: Logic for ending game
+                    // Save potential new high score
+                    if (score > highScore) {
+                        saveHighScore()
+                        highScore = score
+                    }
+                    // TODO: Logic for loss screen
                 }
                 // Combine balls of equal size
                 if (ce.entityA.name == ce.entityB.name) {
@@ -86,16 +96,15 @@ struct ContentView: View {
             if (isPlaying && addBall > 0) {
                 let ballClone = balls[addBallIndex].clone(recursive: true)
                 // Add randomness so balls don't stack
-                let x = xDrop / 65.0 + Float.random(in: -0.002...0.002)
+                let x = xDrop / 65.0 + Float.random(in: -0.005...0.005)
                 let y = Float.random(in: -0.02...0.02)
-                let z = yDrop / 65.0 + Float.random(in: -0.002...0.002)
+                let z = yDrop / 65.0 + Float.random(in: -0.005...0.005)
                 ballClone.position = SIMD3(x, y, z)
                 content.add(ballClone)
             }
             if (exampleBall != nil && !exampleBall!.isEnabled) {
                 exampleBall!.isEnabled = true
                 content.add(exampleBall!)
-                print("NEW EXAMPLE BALL")
             }
             let x = xDrop / 65.0
             let z = yDrop / 65.0
@@ -113,7 +122,11 @@ struct ContentView: View {
                         let next = getNextBallForDrop()
                         next.isEnabled = false
                         exampleBall = next
-                    })
+                        if (score > highScore) {
+                            saveHighScore()
+                            highScore = score
+                        }
+                    }).disabled(!isPlaying)
                     Slider(value: $xDrop, in: -10...10, step: 0.1) {
                         Text("X")
                     } minimumValueLabel: {
@@ -133,9 +146,14 @@ struct ContentView: View {
                         addBall = 0
                     }.frame(width: 200)
                     Text("Score: \(score)").fontWeight(Font.Weight.bold).frame(width: 120)
-                    Button("Info", action: {
-                        openWindow(id: "info-window")
-                    })
+                    Button(
+                        isPlaying ? "Info" : "Reset Game",
+                        systemImage: isPlaying ? "info.circle" : "arrow.counterclockwise",
+                        action: isPlaying ? {
+                            openWindow(id: "info-window")
+                        } : {
+                        // Reset game logic
+                    }).labelStyle(.iconOnly)
                 }
             }
         }
@@ -159,8 +177,36 @@ struct ContentView: View {
     func getNextSizeBallClone(ball: Entity) -> Entity {
         guard let cur = balls.firstIndex(where: { e in e.name == ball.name }) else { return balls[1].clone(recursive: true) }
         
-        // TODO: Winning screen, this is crash at max size combine
-        return balls[cur+1].clone(recursive: true)
+        // Max size combine replaces with one max size entity
+        return balls.count > cur+1 ? balls[cur+1].clone(recursive: true) : balls[cur].clone(recursive: true)
+    }
+    
+    func saveHighScore() -> Void {
+        let fetchData = NSFetchRequest<NSFetchRequestResult>(entityName: "ScoreEntity")
+        if let result = try? viewContext.fetch(fetchData) as? [ScoreEntity] {
+            if (!result.isEmpty) {
+                if (Int(result[0].highScore) > score) {
+                    return
+                }
+                result[0].setValue(Int32(score), forKey: "highScore")
+            } else {
+                let scoreEntity = ScoreEntity(context: viewContext)
+                scoreEntity.highScore = Int32(score)
+            }
+        }
+        do {
+            try viewContext.save()
+        } catch {}
+    }
+    
+    func getHighScore() -> Int {
+        let fetchData = NSFetchRequest<NSFetchRequestResult>(entityName: "ScoreEntity")
+        if let result = try? viewContext.fetch(fetchData) as? [ScoreEntity] {
+            if (!result.isEmpty) {
+                return Int(result[0].highScore)
+            }
+        }
+        return 0
     }
     
     func getNextBallForDrop() -> Entity {
