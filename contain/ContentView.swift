@@ -14,6 +14,7 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.managedObjectContext) private var viewContext
     @State private var isPlaying = true
+    @State private var resetGame = false
     @State private var subs: [EventSubscription] = []
     @State private var exampleBall: Entity?
     @State private var nextExampleBall: Entity?
@@ -86,6 +87,12 @@ struct ContentView: View {
                 addBall = 0
             })
         } update: { content in
+            if (resetGame && xDrop == 0 && yDrop == 0 && addBall == 0) {
+                resetGameEntities(content: content)
+                exampleBall!.isEnabled = true
+                content.add(exampleBall!)
+                return
+            }
             if (replaceBallA != nil && replaceBallB != nil && replaceBallA!.isEnabled && replaceBallB!.isEnabled) {
                 let ballClone = getNextSizeBallClone(ball: replaceBallA!)
                 ballClone.position = getReplacementPos(ball1: replaceBallA!, ball2: replaceBallB!)
@@ -116,6 +123,7 @@ struct ContentView: View {
             ToolbarItemGroup(placement: .bottomOrnament) {
                 HStack (spacing: 12) {
                     Button("Drop", action: {
+                        resetGame = false
                         addBall+=1
                         addBallIndex = (exampleBalls.firstIndex(where: { e in e.name == exampleBall?.name }) ?? 0)
                         exampleBall?.removeFromParent()
@@ -145,15 +153,12 @@ struct ContentView: View {
                     } onEditingChanged: { _ in
                         addBall = 0
                     }.frame(width: 200)
-                    Text("Score: \(score)").fontWeight(Font.Weight.bold).frame(width: 120)
-                    Button(
-                        isPlaying ? "Info" : "Reset Game",
-                        systemImage: isPlaying ? "info.circle" : "arrow.counterclockwise",
-                        action: isPlaying ? {
-                            openWindow(id: "info-window")
-                        } : {
-                        // Reset game logic
-                    }).labelStyle(.iconOnly)
+                    VStack {
+                        Text("Score: \(score)").fontWeight(Font.Weight.bold).frame(width: 140)
+                        Text("High: \(highScore)").fontWeight(Font.Weight.bold).frame(width: 140)
+                    }
+                    Button("Reset Game", systemImage: "arrow.counterclockwise", action: resetGameStates)
+                        .labelStyle(.iconOnly)
                 }
             }
         }
@@ -216,6 +221,23 @@ struct ContentView: View {
             case 70..<101: return exampleBalls[1]
             default: return exampleBalls[0]
         }
+    }
+    
+    func resetGameStates() -> Void {
+        resetGame = true
+        isPlaying = true
+        addBall = 0
+        replaceBallA = nil
+        score = 0
+        xDrop = 0
+        yDrop = 0
+        exampleBall = getNextBallForDrop()
+    }
+    
+    func resetGameEntities(content: RealityViewContent) -> Void {
+        // Clear all entities except box
+        // TODO: Add particles???
+        content.entities.removeAll(where: {e -> Bool in e.name != "RootScene"})
     }
 }
 
