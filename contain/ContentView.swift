@@ -25,7 +25,9 @@ struct ContentView: View {
     @State private var addBallIndex = 0
     @State private var replaceBallA: Entity?
     @State private var replaceBallB: Entity?
+    @State private var xDropStart: Float = 0
     @State private var xDrop: Float = 0
+    @State private var yDropStart: Float = 0
     @State private var yDrop: Float = 0
     @State private var score: Int = 0
     @State private var highScore: Int = 0
@@ -41,9 +43,10 @@ struct ContentView: View {
     ]
     private let EXAMPLE_BALL_ENTITY_NAMES = [
         "ExampleBall",
-        "ExampleBall05"
+        "ExampleBall05",
+        "ExampleBall1"
     ]
-
+    
     var body: some View {
         RealityView { content in
             // Get saved game data
@@ -69,7 +72,7 @@ struct ContentView: View {
                 }
             }
             self.subs.append(content.subscribe(to: CollisionEvents.Began.self) { ce in
-                if (ce.entityA.name == OUT_OF_BOUNDS_ENTITY_NAME) {
+                if (ce.entityA.name == OUT_OF_BOUNDS_ENTITY_NAME && ce.entityB.name.contains("Sphere")) {
                     isPlaying = false
                     // Save potential new high score
                     if (score > highScore) {
@@ -113,28 +116,41 @@ struct ContentView: View {
                 exampleBall!.isEnabled = true
                 content.add(exampleBall!)
             }
-            let x = xDrop / 65.0
-            let z = yDrop / 65.0
+            let x = xDrop / 70.0
+            let z = yDrop / 70.0
             
             exampleBall?.position.x = x
             exampleBall?.position.z = z
         }
+        // Drop ball on tap anywhere
+        .gesture(SpatialTapGesture().targetedToAnyEntity().onEnded({_ in dropBall()}))
+        // Drag to reposition example ball
+        // x,yDrop are the current position of the example ball
+        // x,yDropStart are the position of the example ball before the drag gesture started
+        // These are required so that there isn't a visual jump when the gesture starts
+        .gesture(DragGesture().targetedToAnyEntity().onChanged({action in
+            xDrop = xDropStart + Float(action.translation3D.x.scaled(by: 0.05))
+            yDrop = yDropStart + Float(action.translation3D.z.scaled(by: 0.05))
+            addBall = 0
+            if (xDrop > 10) {
+                xDrop = 10
+            } else if (xDrop < -10) {
+                xDrop = -10
+            }
+            if (yDrop > 10) {
+                yDrop = 10
+            } else if (yDrop < -10) {
+                yDrop = -10
+            }
+        }).onEnded({action in
+            xDropStart = xDrop
+            yDropStart = yDrop
+        }))
         .toolbar {
             ToolbarItemGroup(placement: .bottomOrnament) {
                 HStack (spacing: 12) {
-                    Button("Drop", action: {
-                        resetGame = false
-                        addBall+=1
-                        addBallIndex = (exampleBalls.firstIndex(where: { e in e.name == exampleBall?.name }) ?? 0)
-                        exampleBall?.removeFromParent()
-                        let next = getNextBallForDrop()
-                        next.isEnabled = false
-                        exampleBall = next
-                        if (score > highScore) {
-                            saveHighScore()
-                            highScore = score
-                        }
-                    }).disabled(!isPlaying)
+                    /* Not needed with new inputs
+                    Button("Drop", action: dropBall).disabled(!isPlaying)
                     Slider(value: $xDrop, in: -10...10, step: 0.1) {
                         Text("X")
                     } minimumValueLabel: {
@@ -153,6 +169,7 @@ struct ContentView: View {
                     } onEditingChanged: { _ in
                         addBall = 0
                     }.frame(width: 200)
+                    */
                     VStack {
                         Text("Score: \(score)").fontWeight(Font.Weight.bold).frame(width: 140)
                         Text("High: \(highScore)").fontWeight(Font.Weight.bold).frame(width: 140)
@@ -161,6 +178,20 @@ struct ContentView: View {
                         .labelStyle(.iconOnly)
                 }
             }
+        }
+    }
+    
+    func dropBall() {
+        resetGame = false
+        addBall+=1
+        addBallIndex = (exampleBalls.firstIndex(where: { e in e.name == exampleBall?.name }) ?? 0)
+        exampleBall?.removeFromParent()
+        let next = getNextBallForDrop()
+        next.isEnabled = false
+        exampleBall = next
+        if (score > highScore) {
+            saveHighScore()
+            highScore = score
         }
     }
     
@@ -217,8 +248,9 @@ struct ContentView: View {
     func getNextBallForDrop() -> Entity {
         let rand = Int.random(in: 0...100)
         switch rand {
-            case 0..<70: return exampleBalls[0]
-            case 70..<101: return exampleBalls[1]
+            case 0..<45: return exampleBalls[0]
+            case 45..<80: return exampleBalls[1]
+            case 80..<101: return exampleBalls[2]
             default: return exampleBalls[0]
         }
     }
