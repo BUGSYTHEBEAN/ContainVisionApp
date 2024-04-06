@@ -19,7 +19,6 @@ struct containApp: App {
         
         WindowGroup("Info", id: "info-window") {
             InfoView()
-        }.windowStyle(.plain)
-            .defaultSize(CGSize(width: 400, height: 400))
+        }.defaultSize(CGSize(width: 500, height: 400))
     }
 }

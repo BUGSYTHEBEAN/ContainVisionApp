@@ -79,7 +79,8 @@ struct ContentView: View {
                         saveHighScore()
                         highScore = score
                     }
-                    // TODO: Logic for loss screen
+                    // Change box tint to red
+                    updateBoxColors(color: .red)
                 }
                 // Combine balls of equal size
                 if (ce.entityA.name == ce.entityB.name) {
@@ -169,14 +170,18 @@ struct ContentView: View {
                     } onEditingChanged: { _ in
                         addBall = 0
                     }.frame(width: 200)
-                    */
                     VStack {
                         Text("Score: \(score)").fontWeight(Font.Weight.bold).frame(width: 140)
                         Text("High: \(highScore)").fontWeight(Font.Weight.bold).frame(width: 140)
                     }
+                    */
+                    Text("Score: \(score)").font(.title2).frame(minWidth: 140, alignment: .leading)
+                    Text("High: \(highScore)").font(.title2).frame(minWidth: 140, alignment: .leading)
                     Button("Reset Game", systemImage: "arrow.counterclockwise", action: resetGameStates)
-                        .labelStyle(.iconOnly)
-                }
+                        .labelStyle(.iconOnly).font(.title3)
+                    Button("Info", systemImage: "info.circle", action: {openWindow(id: "info-window")})
+                        .labelStyle(.iconOnly).font(.title)
+                }.padding(.horizontal, 12)
             }
         }
     }
@@ -264,12 +269,27 @@ struct ContentView: View {
         xDrop = 0
         yDrop = 0
         exampleBall = getNextBallForDrop()
+        updateBoxColors(color: .white)
     }
     
     func resetGameEntities(content: RealityViewContent) -> Void {
         // Clear all entities except box
         // TODO: Add particles???
         content.entities.removeAll(where: {e -> Bool in e.name != "RootScene"})
+    }
+    
+    func updateBoxColors(color: UIColor) -> Void {
+        for e in floorEntity!.children.first!.children {
+            if e.name.contains("Front") {
+                continue
+            }
+            var model = e.components[ModelComponent.self]
+            if var material = model?.materials.first as? PhysicallyBasedMaterial {
+                material.baseColor.tint = color
+                model!.materials = [material]
+                e.components.set(model!)
+            }
+        }
     }
 }
 
