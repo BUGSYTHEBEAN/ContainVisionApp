@@ -31,9 +31,12 @@ struct ContentView: View {
     @State private var yDrop: Float = 0
     @State private var score: Int = 0
     @State private var highScore: Int = 0
+    @State private var isDragging = false
+    @State private var collisionAudio: AudioResource?
     private let OUT_OF_BOUNDS_ENTITY_NAME = "OutOfBoundsFloor"
     private let BALL_ENTITY_NAMES = [
         "Ball",
+        "Ball02",
         "Ball05",
         "Ball1",
         "Ball2",
@@ -43,6 +46,7 @@ struct ContentView: View {
     ]
     private let EXAMPLE_BALL_ENTITY_NAMES = [
         "ExampleBall",
+        "ExampleBall02",
         "ExampleBall05",
         "ExampleBall1"
     ]
@@ -55,6 +59,7 @@ struct ContentView: View {
             if let box = try? await Entity(named: "Scene", in: realityKitContentBundle) {
                 content.add(box)
                 floorEntity = box
+                updateBoxColors(color: .darkGray)
             }
             // Example ball that moves with the sliders
             for exampleBallName in EXAMPLE_BALL_ENTITY_NAMES {
@@ -64,12 +69,17 @@ struct ContentView: View {
             }
             exampleBall = exampleBalls[0]
             exampleBall?.isEnabled = true
+            exampleBall?.position.z = 0.20
+            updateEntityOpacity(e: exampleBall, opacity: 0.5)
             content.add(exampleBall!)
             // Get the balls in order of size
             for ballName in BALL_ENTITY_NAMES {
                 if let ball = try? await Entity(named: ballName, in: realityKitContentBundle) {
                     balls.append(ball)
                 }
+            }
+            if let audio = try? AudioFileResource.load(named: "/RootScene/CollisionSound1_mp3", from: "Scene.usda", in: realityKitContentBundle) {
+               collisionAudio = audio
             }
             self.subs.append(content.subscribe(to: CollisionEvents.Began.self) { ce in
                 if (ce.entityA.name == OUT_OF_BOUNDS_ENTITY_NAME && ce.entityB.name.contains("Sphere")) {
@@ -87,6 +97,10 @@ struct ContentView: View {
                     replaceBallA = ce.entityA
                     replaceBallB = ce.entityB
                     score += 5 * ((balls.firstIndex(where: { e in e.name == ce.entityA.name }) ?? 0) + 1)
+                    if (score > highScore) {
+                        saveHighScore()
+                        highScore = score
+                    }
                 }
                 addBall = 0
             })
@@ -102,14 +116,15 @@ struct ContentView: View {
                 ballClone.position = getReplacementPos(ball1: replaceBallA!, ball2: replaceBallB!)
                 clearReplacementBalls(ball1: replaceBallA!, ball2: replaceBallB!)
                 content.add(ballClone)
+                ballClone.playAudio(collisionAudio!)
                 return
             }
             if (isPlaying && addBall > 0) {
                 let ballClone = balls[addBallIndex].clone(recursive: true)
                 // Add randomness so balls don't stack
-                let x = xDrop / 65.0 + Float.random(in: -0.005...0.005)
+                let x = xDrop / 70.0 + Float.random(in: -0.005...0.005)
                 let y = Float.random(in: -0.02...0.02)
-                let z = yDrop / 65.0 + Float.random(in: -0.005...0.005)
+                let z = yDrop / 70.0 + Float.random(in: -0.005...0.005) + 0.20 // World offset
                 ballClone.position = SIMD3(x, y, z)
                 content.add(ballClone)
             }
@@ -118,10 +133,15 @@ struct ContentView: View {
                 content.add(exampleBall!)
             }
             let x = xDrop / 70.0
-            let z = yDrop / 70.0
+            let z = yDrop / 70.0 + 0.20
             
             exampleBall?.position.x = x
             exampleBall?.position.z = z
+            if (isDragging) {
+                updateEntityOpacity(e: exampleBall, opacity: 1.0)
+            } else {
+                updateEntityOpacity(e: exampleBall, opacity: 0.5)
+            }
         }
         // Drop ball on tap anywhere
         .gesture(SpatialTapGesture().targetedToAnyEntity().onEnded({_ in dropBall()}))
@@ -143,38 +163,15 @@ struct ContentView: View {
             } else if (yDrop < -10) {
                 yDrop = -10
             }
+            isDragging = true
         }).onEnded({action in
             xDropStart = xDrop
             yDropStart = yDrop
+            isDragging = false
         }))
         .toolbar {
             ToolbarItemGroup(placement: .bottomOrnament) {
                 HStack (spacing: 12) {
-                    /* Not needed with new inputs
-                    Button("Drop", action: dropBall).disabled(!isPlaying)
-                    Slider(value: $xDrop, in: -10...10, step: 0.1) {
-                        Text("X")
-                    } minimumValueLabel: {
-                        Image(systemName: "arrowshape.left")
-                    } maximumValueLabel: {
-                        Image(systemName: "arrowshape.right")
-                    } onEditingChanged: { _ in
-                        addBall = 0
-                    }.frame(width: 200)
-                    Slider(value: $yDrop, in: -10...10, step: 0.1) {
-                        Text("Z")
-                    } minimumValueLabel: {
-                        Image(systemName: "arrowshape.up")
-                    } maximumValueLabel: {
-                        Image(systemName: "arrowshape.down")
-                    } onEditingChanged: { _ in
-                        addBall = 0
-                    }.frame(width: 200)
-                    VStack {
-                        Text("Score: \(score)").fontWeight(Font.Weight.bold).frame(width: 140)
-                        Text("High: \(highScore)").fontWeight(Font.Weight.bold).frame(width: 140)
-                    }
-                    */
                     Text("Score: \(score)").font(.title2).frame(minWidth: 140, alignment: .leading)
                     Text("High: \(highScore)").font(.title2).frame(minWidth: 140, alignment: .leading)
                     Button("Reset Game", systemImage: "arrow.counterclockwise", action: resetGameStates)
@@ -187,6 +184,9 @@ struct ContentView: View {
     }
     
     func dropBall() {
+        if (!isPlaying) {
+            return
+        }
         resetGame = false
         addBall+=1
         addBallIndex = (exampleBalls.firstIndex(where: { e in e.name == exampleBall?.name }) ?? 0)
@@ -194,10 +194,6 @@ struct ContentView: View {
         let next = getNextBallForDrop()
         next.isEnabled = false
         exampleBall = next
-        if (score > highScore) {
-            saveHighScore()
-            highScore = score
-        }
     }
     
     func clearReplacementBalls(ball1: Entity, ball2: Entity) {
@@ -253,9 +249,10 @@ struct ContentView: View {
     func getNextBallForDrop() -> Entity {
         let rand = Int.random(in: 0...100)
         switch rand {
-            case 0..<45: return exampleBalls[0]
-            case 45..<80: return exampleBalls[1]
-            case 80..<101: return exampleBalls[2]
+            case 0..<40: return exampleBalls[0]
+            case 40..<70: return exampleBalls[1]
+            case 70..<91: return exampleBalls[2]
+            case 91..<101: return exampleBalls[3]
             default: return exampleBalls[0]
         }
     }
@@ -269,7 +266,7 @@ struct ContentView: View {
         xDrop = 0
         yDrop = 0
         exampleBall = getNextBallForDrop()
-        updateBoxColors(color: .white)
+        updateBoxColors(color: .darkGray)
     }
     
     func resetGameEntities(content: RealityViewContent) -> Void {
@@ -290,6 +287,13 @@ struct ContentView: View {
                 e.components.set(model!)
             }
         }
+    }
+    
+    func updateEntityOpacity(e: Entity?, opacity: Float) -> Void {
+        if (e == nil) {
+            return
+        }
+        e!.components[OpacityComponent.self] = .init(opacity: opacity)
     }
 }
 

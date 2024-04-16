@@ -1,6 +1,7 @@
 {
   "images" : [
     {
+      "filename" : "iconfront.png",
       "idiom" : "vision",
       "scale" : "2x"
     }
